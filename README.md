@@ -21,6 +21,7 @@
 - [Project Structure](#project-structure)
 - [Setup](#setup)
 - [Usage](#usage)
+- [Model Fine-Tuning](#model-fine-tuning)
 - [Notes](#notes)
 
 ---
@@ -207,6 +208,45 @@ df = pd.read_csv("test.csv")
 The central idea is simple:
 
 > Start from a valid medical template and make only the necessary edits.
+
+---
+
+## Model Fine-Tuning
+
+The notebook fine-tunes `Qwen/Qwen2.5-3B-Instruct` for template-aware radiology report editing using supervised fine-tuning (SFT) with 4-bit QLoRA. Run [Radiology_reporting_harness.ipynb](./Radiology_reporting_harness.ipynb) in a GPU-enabled notebook environment such as Google Colab.
+
+### Training data
+
+The notebook loads separate training and validation JSONL files (`train_sft_train.jsonl` and `train_sft_val.jsonl`). Each record contains:
+
+```json
+{
+  "input": {
+    "template_content": "...",
+    "dictation": "...",
+    "modality": "...",
+    "body_part": "...",
+    "study_description": "...",
+    "patient_age_band": "...",
+    "patient_sex": "..."
+  },
+  "output": {
+    "report": "..."
+  }
+}
+```
+
+Each example is formatted with the Qwen chat template: the input provides the clinical context, template, and dictation, while `output.report` is the target final report. The prompt instructs the model to preserve the template, avoid invented findings, and return `FINDINGS` and `IMPRESSION` sections.
+
+### Fine-tuning configuration
+
+- **Quantization:** 4-bit NF4 with double quantization
+- **LoRA:** rank 16, alpha 32, dropout 0.05; applied to attention and MLP projection layers
+- **Training:** 3 epochs, maximum sequence length 2,048, batch size 1 with 8 gradient-accumulation steps
+- **Optimization:** paged 8-bit AdamW, learning rate `2e-4`, constant scheduler
+- **Evaluation and checkpoints:** evaluate and save every 50 steps, retain up to 2 checkpoints, and load the checkpoint with the best evaluation loss
+
+The notebook trains with TRL's `SFTTrainer` and saves the trained LoRA adapter and tokenizer to `/content/qwen2.5-3b-radiology-lora`. This is an adapter, not a full copy of the base model; load it alongside the same Qwen base model for inference.
 
 ---
 
